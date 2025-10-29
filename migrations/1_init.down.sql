@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS subscriptions;
+
+DROP EXTENSION IF EXISTS "uuid-ossp";
