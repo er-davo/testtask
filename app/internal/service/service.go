@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"subscriptionsservice/internal/models"
+	"subscriptionsservice/internal/repository"
 
 	"go.uber.org/zap"
 )
@@ -11,22 +12,22 @@ import (
 // SubscriptionRepo defines repository methods required by SubscriptionService.
 type SubscriptionRepo interface {
 	// CreateSubscription inserts a new subscription record.
-	CreateSubscription(ctx context.Context, s *models.Subscription) error
+	CreateSubscription(ctx context.Context, s *models.Subscription, opts ...repository.Option) error
 
 	// GetByID returns a subscription by its ID.
-	GetByID(ctx context.Context, id int64) (*models.Subscription, error)
+	GetByID(ctx context.Context, id int64, opts ...repository.Option) (*models.Subscription, error)
 
 	// List returns all subscriptions.
-	List(ctx context.Context) ([]models.Subscription, error)
+	List(ctx context.Context, opts ...repository.Option) ([]models.Subscription, error)
 
 	// Update modifies an existing subscription.
-	Update(ctx context.Context, s *models.Subscription) error
+	Update(ctx context.Context, s *models.Subscription, opts ...repository.Option) error
 
 	// Delete removes a subscription by ID.
-	Delete(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id int64, opts ...repository.Option) error
 
 	// Summary returns the sum of subscription prices matching the query.
-	Summary(ctx context.Context, q *models.SummaryRequest) (int, error)
+	Summary(ctx context.Context, q *models.SummaryRequest, opts ...repository.Option) (int, error)
 }
 
 // SubscriptionService provides business logic for managing subscriptions.

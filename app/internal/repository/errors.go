@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -26,6 +27,9 @@ var (
 
 	// ErrNoRowsAffected is returned when an update/delete affects no rows.
 	ErrNoRowsAffected = errors.New("no rows affected")
+
+	// ErrTxAborted is returned when a transaction is aborted.
+	ErrTxAborted = pgx.ErrTxClosed
 )
 
 // wrapDBError converts low-level database errors into higher-level
@@ -37,6 +41,14 @@ func wrapDBError(err error) error {
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
+	}
+	if errors.Is(err, pgx.ErrTxClosed) {
+		return ErrTxAborted
+	}
+
+	// Postgres: transaction aborted message
+	if strings.Contains(err.Error(), "current transaction is aborted") {
+		return ErrTxAborted
 	}
 
 	var pgErr *pgconn.PgError

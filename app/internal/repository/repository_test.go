@@ -80,38 +80,38 @@ func TestSubscriptionsRepo_CRUD(t *testing.T) {
 	defer tx.Rollback(t.Context())
 
 	t.Run("Create", func(t *testing.T) {
-		err := repo.CreateSubscription(t.Context(), subs)
+		err := repo.CreateSubscription(t.Context(), subs, repository.WithTx(tx))
 		assert.NoError(t, err)
 		assert.NotZero(t, subs.ID)
 	})
 
 	t.Run("GetByID", func(t *testing.T) {
-		got, err := repo.GetByID(t.Context(), subs.ID)
+		got, err := repo.GetByID(t.Context(), subs.ID, repository.WithTx(tx))
 		assert.NoError(t, err)
 		assert.Equal(t, subs.ServiceName, got.ServiceName)
 	})
 
 	t.Run("Update", func(t *testing.T) {
 		subs.Price = 20
-		err := repo.Update(t.Context(), subs)
+		err := repo.Update(t.Context(), subs, repository.WithTx(tx))
 		assert.NoError(t, err)
 
-		got, err := repo.GetByID(t.Context(), subs.ID)
+		got, err := repo.GetByID(t.Context(), subs.ID, repository.WithTx(tx))
 		assert.NoError(t, err)
 		assert.Equal(t, subs.Price, got.Price)
 	})
 
 	t.Run("List", func(t *testing.T) {
-		all, err := repo.List(t.Context())
+		all, err := repo.List(t.Context(), repository.WithTx(tx))
 		assert.NoError(t, err)
 		assert.GreaterOrEqual(t, len(all), 1)
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		err := repo.Delete(t.Context(), subs.ID)
+		err := repo.Delete(t.Context(), subs.ID, repository.WithTx(tx))
 		assert.NoError(t, err)
 
-		_, err = repo.GetByID(t.Context(), subs.ID)
+		_, err = repo.GetByID(t.Context(), subs.ID, repository.WithTx(tx))
 		assert.ErrorIs(t, err, repository.ErrNotFound)
 	})
 }
@@ -200,7 +200,7 @@ func TestSubscriptionsRepo_Summary(t *testing.T) {
 				ServiceName: tt.serviceName,
 			}
 
-			sum, err := repo.Summary(t.Context(), req)
+			sum, err := repo.Summary(t.Context(), req, repository.WithTx(tx))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedSum, sum)
 		})

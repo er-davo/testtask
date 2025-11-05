@@ -36,6 +36,7 @@ func isRetryableFunc(err error) bool {
 		repository.ErrInvalidID,
 		repository.ErrForeignKeyViolation,
 		repository.ErrNotFound,
+		repository.ErrTxAborted,
 	}
 
 	for _, unretryableErr := range unretryableErrors {
