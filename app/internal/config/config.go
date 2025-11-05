@@ -19,6 +19,7 @@ type Config struct {
 type App struct {
 	Port         string `mapstructure:"port"`          // HTTP server port
 	MirgationDir string `mapstructure:"migration_dir"` // Directory for DB migrations
+	LogLevel     string `mapstructure:"log_level"`     // Log level (e.g., debug, info, error)
 }
 
 // Retry holds retry strategy configuration.

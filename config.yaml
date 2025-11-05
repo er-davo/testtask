@@ -1,5 +1,6 @@
 app:
   port: 8080
+  log_level: debug
 retry:
   backoff: exponential
   base: 1s

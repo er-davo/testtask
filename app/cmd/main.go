@@ -19,17 +19,18 @@ import (
 )
 
 func main() {
-	log := logger.NewLogger()
-	defer log.Sync()
 
 	configFilePath := os.Getenv("CONFIG_PATH")
 	if configFilePath == "" {
-		log.Fatal("env ConfigPath is empty")
+		panic("env ConfigPath is empty")
 	}
 	cfg, err := config.Load(configFilePath)
 	if err != nil {
-		log.Fatal("error on loading config", zap.Error(err))
+		panic("error on loading config: " + err.Error())
 	}
+
+	log := logger.NewLogger(cfg.App.LogLevel)
+	defer log.Sync()
 
 	err = database.Migrate(cfg.App.MirgationDir, cfg.DatabaseURL)
 	if err != nil {
