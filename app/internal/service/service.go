@@ -18,7 +18,7 @@ type SubscriptionRepo interface {
 	GetByID(ctx context.Context, id int64, opts ...repository.Option) (*models.Subscription, error)
 
 	// List returns all subscriptions.
-	List(ctx context.Context, opts ...repository.Option) ([]models.Subscription, error)
+	List(ctx context.Context, limit, offset int, opts ...repository.Option) ([]models.Subscription, error)
 
 	// Update modifies an existing subscription.
 	Update(ctx context.Context, s *models.Subscription, opts ...repository.Option) error
@@ -67,9 +67,9 @@ func (s *SubscriptionService) GetByID(ctx context.Context, id int64) (*models.Su
 }
 
 // List returns all subscriptions.
-func (s *SubscriptionService) List(ctx context.Context) ([]models.Subscription, error) {
+func (s *SubscriptionService) List(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
 	s.log.Info("listing subscriptions")
-	subs, err := s.repo.List(ctx)
+	subs, err := s.repo.List(ctx, limit, offset)
 	if err != nil {
 		s.log.Error("failed to list subscriptions", zap.Error(err))
 		return nil, err

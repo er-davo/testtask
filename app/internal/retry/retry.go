@@ -43,6 +43,14 @@ func New(opts ...RetryOption) Retrier {
 	return r
 }
 
+// NoRetry returns a Retrier that performs no retries.
+func NoRetry() Retrier {
+	return New(
+		WithMaxAttempts(1),
+		WithBackoff(LinearBackoff{}),
+	)
+}
+
 // Do executes the given AttemptFunc with retries according to the retrier's configuration.
 // Returns nil if the attempt succeeds, or the last error if all retries fail.
 func (r *retrier) Do(ctx context.Context, f AttemptFunc) error {

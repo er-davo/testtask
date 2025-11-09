@@ -35,8 +35,8 @@ func WithTx(tx pgx.Tx) Option {
 	}
 }
 
-// DefaultOptions returns default options (pool).
-func DefaultOptions(repo *SubscriptionsRepo) RepositoryOptions {
+// defaultOptions returns default options (pool).
+func defaultOptions(repo *SubscriptionsRepo) RepositoryOptions {
 	return RepositoryOptions{
 		exec: repo.db,
 	}
@@ -63,13 +63,22 @@ func (r *SubscriptionsRepo) CreateSubscription(ctx context.Context, subs *models
 	opt := r.applyOptions(opts...)
 
 	return r.retry.Do(ctx, func() error {
+		var endDate interface{}
+		if subs.EndDate != nil {
+			// передаём только дату без времени
+			endDate = subs.EndDate.Time.Format("2006-01-02")
+		} else {
+			endDate = nil
+		}
+
 		query := r.psql.Insert("subscriptions").
 			Columns(
 				"service_name", "price", "user_id",
 				"start_date", "end_date",
 			).Values(
 			subs.ServiceName, subs.Price, subs.UserID,
-			subs.StartDate.Time, subs.EndDate,
+			subs.StartDate.Time.Format("2006-01-02"),
+			endDate,
 		).Suffix("RETURNING id")
 
 		sql, args, err := query.ToSql()
@@ -124,24 +133,29 @@ func (r *SubscriptionsRepo) GetByID(ctx context.Context, id int64, opts ...Optio
 	return &sub, retryErr
 }
 
-// List returns all subscriptions ordered by ID.
-func (r *SubscriptionsRepo) List(ctx context.Context, opts ...Option) ([]models.Subscription, error) {
+// List returns subscriptions ordered by id with optional pagination.
+// If limit == 0 -> no LIMIT applied.
+func (r *SubscriptionsRepo) List(ctx context.Context, limit, offset int, opts ...Option) ([]models.Subscription, error) {
 	opt := r.applyOptions(opts...)
 
 	var subs []models.Subscription
 
 	if err := r.retry.Do(ctx, func() error {
-		query := r.psql.Select(
+		builder := r.psql.Select(
 			"id", "service_name", "price",
 			"user_id", "start_date", "end_date",
-		).From("subscriptions").OrderBy("id")
+		).From("subscriptions").OrderBy("id ASC")
 
-		sql, args, err := query.ToSql()
+		if limit > 0 {
+			builder = builder.Limit(uint64(limit)).Offset(uint64(offset))
+		}
+
+		sqlStr, args, err := builder.ToSql()
 		if err != nil {
 			return err
 		}
 
-		rows, err := opt.exec.Query(ctx, sql, args...)
+		rows, err := opt.exec.Query(ctx, sqlStr, args...)
 		if err != nil {
 			return wrapDBError(err)
 		}
@@ -177,12 +191,19 @@ func (r *SubscriptionsRepo) Update(ctx context.Context, subs *models.Subscriptio
 	opt := r.applyOptions(opts...)
 
 	return r.retry.Do(ctx, func() error {
+		var endDate interface{}
+		if subs.EndDate != nil {
+			endDate = subs.EndDate.Time.Format("2006-01-02")
+		} else {
+			endDate = nil
+		}
+
 		query := r.psql.Update("subscriptions").
 			Set("service_name", subs.ServiceName).
 			Set("price", subs.Price).
 			Set("user_id", subs.UserID).
-			Set("start_date", subs.StartDate.Time).
-			Set("end_date", subs.EndDate).
+			Set("start_date", subs.StartDate.Time.Format("2006-01-02")).
+			Set("end_date", endDate).
 			Where(sq.Eq{"id": subs.ID})
 
 		sql, args, err := query.ToSql()
@@ -223,34 +244,79 @@ func (r *SubscriptionsRepo) Delete(ctx context.Context, id int64, opts ...Option
 	})
 }
 
-// Summary calculates total cost in given date range.
+// Summary calculates total price taking into account months of overlap between
+// subscription period and the requested [From, To] range.
+// For each subscription we compute number of months in the intersection (inclusive),
+// then add price * months to total.
 func (r *SubscriptionsRepo) Summary(ctx context.Context, q *models.SummaryRequest, opts ...Option) (int, error) {
 	opt := r.applyOptions(opts...)
 
 	var total int
 
 	if err := r.retry.Do(ctx, func() error {
-		query := r.psql.Select("COALESCE(SUM(price), 0)").
+		// select fields needed to compute overlap: price, start_date, end_date
+		builder := r.psql.Select("price", "start_date", "end_date").
 			From("subscriptions").
-			Where(sq.GtOrEq{"start_date": q.From.Time}).
+			Where(sq.LtOrEq{"start_date": q.To.Time}). // start_date <= to
 			Where(sq.Or{
-				sq.LtOrEq{"end_date": q.To.Time},
+				sq.GtOrEq{"end_date": q.From.Time}, // end_date >= from
 				sq.Expr("end_date IS NULL"),
 			})
 
 		if q.UserID != nil {
-			query = query.Where(sq.Eq{"user_id": *q.UserID})
+			builder = builder.Where(sq.Eq{"user_id": *q.UserID})
 		}
 		if q.ServiceName != nil {
-			query = query.Where(sq.Eq{"service_name": *q.ServiceName})
+			builder = builder.Where(sq.Eq{"service_name": *q.ServiceName})
 		}
 
-		sql, args, err := query.ToSql()
+		sqlStr, args, err := builder.ToSql()
 		if err != nil {
 			return err
 		}
 
-		return wrapDBError(opt.exec.QueryRow(ctx, sql, args...).Scan(&total))
+		rows, err := opt.exec.Query(ctx, sqlStr, args...)
+		if err != nil {
+			return wrapDBError(err)
+		}
+		defer rows.Close()
+
+		var (
+			price     int
+			startDate time.Time
+			endDate   *time.Time
+		)
+
+		for rows.Next() {
+			if err := rows.Scan(&price, &startDate, &endDate); err != nil {
+				return wrapDBError(err)
+			}
+
+			// compute overlap interval [ovStart, ovEnd]
+			ovStart := startDate
+			if q.From.Time.After(ovStart) {
+				ovStart = q.From.Time
+			}
+
+			ovEnd := q.To.Time
+			if endDate != nil && endDate.Before(ovEnd) {
+				ovEnd = *endDate
+			}
+
+			// if no overlap (ovEnd < ovStart) skip
+			if ovEnd.Before(ovStart) {
+				continue
+			}
+
+			months := monthsInclusive(ovStart, ovEnd)
+			total += price * months
+		}
+
+		if err := rows.Err(); err != nil {
+			return wrapDBError(err)
+		}
+
+		return nil
 	}); err != nil {
 		return 0, err
 	}
@@ -259,7 +325,7 @@ func (r *SubscriptionsRepo) Summary(ctx context.Context, q *models.SummaryReques
 }
 
 func (r *SubscriptionsRepo) applyOptions(opts ...Option) *RepositoryOptions {
-	opt := DefaultOptions(r)
+	opt := defaultOptions(r)
 	for _, o := range opts {
 		if o != nil {
 			o(&opt)

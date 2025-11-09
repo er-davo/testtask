@@ -1,19 +1,32 @@
 basePath: /
 definitions:
+  models.MonthDate:
+    properties:
+      time.Time:
+        type: string
+    type: object
   models.Subscription:
     properties:
       end_date:
-        type: string
+        allOf:
+        - $ref: '#/definitions/models.MonthDate'
+        description: Optional end date.
       id:
+        description: Subscription identifier.
         type: integer
       price:
+        description: Monthly price.
         minimum: 0
         type: integer
       service_name:
+        description: Service name.
         type: string
       start_date:
-        type: string
+        allOf:
+        - $ref: '#/definitions/models.MonthDate'
+        description: Start date (month-year).
       user_id:
+        description: Associated user ID.
         type: string
     required:
     - service_name
@@ -23,12 +36,18 @@ definitions:
   models.SummaryRequest:
     properties:
       from:
-        type: string
+        allOf:
+        - $ref: '#/definitions/models.MonthDate'
+        description: Start of the period.
       service_name:
+        description: Optional service filter.
         type: string
       to:
-        type: string
+        allOf:
+        - $ref: '#/definitions/models.MonthDate'
+        description: End of the period.
       user_id:
+        description: Optional user filter.
         type: string
     required:
     - from
@@ -43,15 +62,30 @@ info:
 paths:
   /subscriptions/:
     get:
+      description: Возвращает список подписок с пагинацией
+      parameters:
+      - description: Количество элементов на странице (по умолчанию 10)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение (по умолчанию 0)
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: 'data: список подписок, limit, offset'
           schema:
-            items:
-              $ref: '#/definitions/models.Subscription'
-            type: array
+            additionalProperties: true
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Получить список подписок
       tags:
       - subscriptions
@@ -60,7 +94,7 @@ paths:
       - application/json
       description: Создает новую подписку пользователя
       parameters:
-      - description: Subscription
+      - description: Данные подписки
         in: body
         name: subscription
         required: true
@@ -70,11 +104,17 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Успешное создание
           schema:
             $ref: '#/definitions/models.Subscription'
         "400":
-          description: Bad Request
+          description: Некорректный запрос
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
           schema:
             additionalProperties:
               type: string
@@ -84,21 +124,35 @@ paths:
       - subscriptions
   /subscriptions/{id}:
     delete:
+      description: Удаляет подписку по ID
       parameters:
-      - description: Subscription ID
+      - description: ID подписки
         in: path
         name: id
         required: true
         type: integer
       responses:
         "204":
-          description: No Content
+          description: Удалено
+        "400":
+          description: Некорректный ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Удалить подписку
       tags:
       - subscriptions
     get:
+      description: Возвращает данные подписки по ID
       parameters:
-      - description: Subscription ID
+      - description: ID подписки
         in: path
         name: id
         required: true
@@ -107,11 +161,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Найдена
           schema:
             $ref: '#/definitions/models.Subscription'
+        "400":
+          description: Некорректный ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
-          description: Not Found
+          description: Не найдена
           schema:
             additionalProperties:
               type: string
@@ -122,13 +182,14 @@ paths:
     put:
       consumes:
       - application/json
+      description: Обновляет данные существующей подписки
       parameters:
-      - description: Subscription ID
+      - description: ID подписки
         in: path
         name: id
         required: true
         type: integer
-      - description: Subscription
+      - description: Обновленные данные подписки
         in: body
         name: subscription
         required: true
@@ -138,9 +199,21 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Обновлено
           schema:
             $ref: '#/definitions/models.Subscription'
+        "400":
+          description: Некорректные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Обновить подписку
       tags:
       - subscriptions
@@ -148,8 +221,9 @@ paths:
     post:
       consumes:
       - application/json
+      description: Возвращает общую сумму подписок за указанный период с учетом фильтров
       parameters:
-      - description: Summary query
+      - description: Параметры периода и фильтров
         in: body
         name: summary
         required: true
@@ -159,10 +233,22 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Сумма подписок
           schema:
             additionalProperties:
               type: integer
+            type: object
+        "400":
+          description: Некорректный запрос
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
             type: object
       summary: Получить сумму подписок за период
       tags:

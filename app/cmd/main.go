@@ -19,7 +19,6 @@ import (
 )
 
 func main() {
-
 	configFilePath := os.Getenv("CONFIG_PATH")
 	if configFilePath == "" {
 		panic("env ConfigPath is empty")

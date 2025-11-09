@@ -7,12 +7,13 @@ import (
 	"context"
 	"log"
 	"os"
+	"testing"
+	"time"
+
 	"subscriptionsservice/internal/database"
 	"subscriptionsservice/internal/models"
 	"subscriptionsservice/internal/repository"
 	"subscriptionsservice/internal/retry"
-	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -63,7 +64,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSubscriptionsRepo_CRUD(t *testing.T) {
-	repo := repository.NewSubscriptionsRepo(db, retry.New()) // или твой retry
+	repo := repository.NewSubscriptionsRepo(db, retry.NoRetry())
 
 	subs := &models.Subscription{
 		ServiceName: "Netflix",
@@ -74,9 +75,7 @@ func TestSubscriptionsRepo_CRUD(t *testing.T) {
 	}
 
 	tx, err := db.Begin(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer tx.Rollback(t.Context())
 
 	t.Run("Create", func(t *testing.T) {
@@ -101,10 +100,19 @@ func TestSubscriptionsRepo_CRUD(t *testing.T) {
 		assert.Equal(t, subs.Price, got.Price)
 	})
 
-	t.Run("List", func(t *testing.T) {
-		all, err := repo.List(t.Context(), repository.WithTx(tx))
+	t.Run("List with pagination", func(t *testing.T) {
+		// создаём еще одну подписку
+		another := &models.Subscription{
+			ServiceName: "Spotify",
+			Price:       10,
+			UserID:      subs.UserID,
+			StartDate:   models.MonthDate{Time: time.Now()},
+		}
+		assert.NoError(t, repo.CreateSubscription(t.Context(), another, repository.WithTx(tx)))
+
+		all, err := repo.List(t.Context(), 10, 0, repository.WithTx(tx))
 		assert.NoError(t, err)
-		assert.GreaterOrEqual(t, len(all), 1)
+		assert.GreaterOrEqual(t, len(all), 2)
 	})
 
 	t.Run("Delete", func(t *testing.T) {
@@ -117,47 +125,55 @@ func TestSubscriptionsRepo_CRUD(t *testing.T) {
 }
 
 func TestSubscriptionsRepo_Summary(t *testing.T) {
-	repo := repository.NewSubscriptionsRepo(db, retry.New())
+	repo := repository.NewSubscriptionsRepo(db, retry.NoRetry())
 
 	tx, err := db.Begin(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 	defer tx.Rollback(t.Context())
 
 	user1 := uuid.New()
 	user2 := uuid.New()
+
+	// Подписки:
+	// Netflix (user1): с 1 января по 31 марта — 2? мес × 20 = 40
+	// Spotify (user1): с 15 февраля по 15 апреля — 2 мес × 10 = 20
+	// Hulu (user2): с 1 февраля без конца — в диапазоне тоже 2 мес × 15 = 30
+	layout := "2006-01-02"
+	parse := func(s string) time.Time {
+		tm, _ := time.Parse(layout, s)
+		return tm
+	}
 
 	subs := []*models.Subscription{
 		{
 			ServiceName: "Netflix",
 			Price:       20,
 			UserID:      user1,
-			StartDate:   models.MonthDate{Time: time.Now()},
-			EndDate:     nil,
+			StartDate:   models.MonthDate{Time: parse("2025-01-01")},
+			EndDate:     &models.MonthDate{Time: parse("2025-03-31")},
 		},
 		{
 			ServiceName: "Spotify",
 			Price:       10,
 			UserID:      user1,
-			StartDate:   models.MonthDate{Time: time.Now()},
-			EndDate:     nil,
+			StartDate:   models.MonthDate{Time: parse("2025-02-15")},
+			EndDate:     &models.MonthDate{Time: parse("2025-04-15")},
 		},
 		{
 			ServiceName: "Hulu",
 			Price:       15,
 			UserID:      user2,
-			StartDate:   models.MonthDate{Time: time.Now()},
+			StartDate:   models.MonthDate{Time: parse("2025-02-01")},
 			EndDate:     nil,
 		},
 	}
 
 	for _, s := range subs {
-		assert.NoError(t, repo.CreateSubscription(t.Context(), s))
+		assert.NoError(t, repo.CreateSubscription(t.Context(), s, repository.WithTx(tx)))
 	}
 
-	from := models.MonthDate{Time: time.Now().Add(-24 * time.Hour)}
-	to := models.MonthDate{Time: time.Now().Add(24 * time.Hour)}
+	from := models.MonthDate{Time: parse("2025-02-01")}
+	to := models.MonthDate{Time: parse("2025-03-31")}
 
 	tests := []struct {
 		name        string
@@ -169,25 +185,25 @@ func TestSubscriptionsRepo_Summary(t *testing.T) {
 			name:        "All subscriptions",
 			userID:      nil,
 			serviceName: nil,
-			expectedSum: 45,
+			expectedSum: 90, // 40 + 20 + 30
 		},
 		{
 			name:        "Filter by UserID=user1",
 			userID:      &user1,
 			serviceName: nil,
-			expectedSum: 30,
+			expectedSum: 60, // Netflix 40 + Spotify 20
 		},
 		{
 			name:        "Filter by ServiceName='Hulu'",
 			userID:      nil,
 			serviceName: ptrString("Hulu"),
-			expectedSum: 15,
+			expectedSum: 30,
 		},
 		{
 			name:        "Filter by UserID=user1 and ServiceName='Spotify'",
 			userID:      &user1,
 			serviceName: ptrString("Spotify"),
-			expectedSum: 10,
+			expectedSum: 20,
 		},
 	}
 

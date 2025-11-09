@@ -17,6 +17,7 @@ const docTemplate = `{
     "paths": {
         "/subscriptions/": {
             "get": {
+                "description": "Возвращает список подписок с пагинацией",
                 "produces": [
                     "application/json"
                 ],
@@ -24,13 +25,34 @@ const docTemplate = `{
                     "subscriptions"
                 ],
                 "summary": "Получить список подписок",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Количество элементов на странице (по умолчанию 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Смещение (по умолчанию 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "data: список подписок, limit, offset",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.Subscription"
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     }
@@ -50,7 +72,7 @@ const docTemplate = `{
                 "summary": "Создать подписку",
                 "parameters": [
                     {
-                        "description": "Subscription",
+                        "description": "Данные подписки",
                         "name": "subscription",
                         "in": "body",
                         "required": true,
@@ -61,13 +83,22 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Успешное создание",
                         "schema": {
                             "$ref": "#/definitions/models.Subscription"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Некорректный запрос",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка сервера",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -80,6 +111,7 @@ const docTemplate = `{
         },
         "/subscriptions/summary": {
             "post": {
+                "description": "Возвращает общую сумму подписок за указанный период с учетом фильтров",
                 "consumes": [
                     "application/json"
                 ],
@@ -92,7 +124,7 @@ const docTemplate = `{
                 "summary": "Получить сумму подписок за период",
                 "parameters": [
                     {
-                        "description": "Summary query",
+                        "description": "Параметры периода и фильтров",
                         "name": "summary",
                         "in": "body",
                         "required": true,
@@ -103,11 +135,29 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Сумма подписок",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
                                 "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Некорректный запрос",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     }
@@ -116,6 +166,7 @@ const docTemplate = `{
         },
         "/subscriptions/{id}": {
             "get": {
+                "description": "Возвращает данные подписки по ID",
                 "produces": [
                     "application/json"
                 ],
@@ -126,7 +177,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Subscription ID",
+                        "description": "ID подписки",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -134,13 +185,22 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Найдена",
                         "schema": {
                             "$ref": "#/definitions/models.Subscription"
                         }
                     },
+                    "400": {
+                        "description": "Некорректный ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Не найдена",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -151,6 +211,7 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "description": "Обновляет данные существующей подписки",
                 "consumes": [
                     "application/json"
                 ],
@@ -164,13 +225,13 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Subscription ID",
+                        "description": "ID подписки",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Subscription",
+                        "description": "Обновленные данные подписки",
                         "name": "subscription",
                         "in": "body",
                         "required": true,
@@ -181,14 +242,33 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Обновлено",
                         "schema": {
                             "$ref": "#/definitions/models.Subscription"
+                        }
+                    },
+                    "400": {
+                        "description": "Некорректные данные",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "delete": {
+                "description": "Удаляет подписку по ID",
                 "tags": [
                     "subscriptions"
                 ],
@@ -196,7 +276,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Subscription ID",
+                        "description": "ID подписки",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -204,13 +284,39 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "204": {
-                        "description": "No Content"
+                        "description": "Удалено"
+                    },
+                    "400": {
+                        "description": "Некорректный ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         }
     },
     "definitions": {
+        "models.MonthDate": {
+            "type": "object",
+            "properties": {
+                "time.Time": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Subscription": {
             "type": "object",
             "required": [
@@ -220,22 +326,36 @@ const docTemplate = `{
             ],
             "properties": {
                 "end_date": {
-                    "type": "string"
+                    "description": "Optional end date.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MonthDate"
+                        }
+                    ]
                 },
                 "id": {
+                    "description": "Subscription identifier.",
                     "type": "integer"
                 },
                 "price": {
+                    "description": "Monthly price.",
                     "type": "integer",
                     "minimum": 0
                 },
                 "service_name": {
+                    "description": "Service name.",
                     "type": "string"
                 },
                 "start_date": {
-                    "type": "string"
+                    "description": "Start date (month-year).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MonthDate"
+                        }
+                    ]
                 },
                 "user_id": {
+                    "description": "Associated user ID.",
                     "type": "string"
                 }
             }
@@ -248,15 +368,27 @@ const docTemplate = `{
             ],
             "properties": {
                 "from": {
-                    "type": "string"
+                    "description": "Start of the period.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MonthDate"
+                        }
+                    ]
                 },
                 "service_name": {
+                    "description": "Optional service filter.",
                     "type": "string"
                 },
                 "to": {
-                    "type": "string"
+                    "description": "End of the period.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MonthDate"
+                        }
+                    ]
                 },
                 "user_id": {
+                    "description": "Optional user filter.",
                     "type": "string"
                 }
             }

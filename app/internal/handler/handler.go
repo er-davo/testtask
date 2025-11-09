@@ -38,13 +38,19 @@ func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
 // @Tags subscriptions
 // @Accept json
 // @Produce json
-// @Param subscription body models.Subscription true "Subscription"
-// @Success 201 {object} models.Subscription
-// @Failure 400 {object} map[string]string
+// @Param subscription body models.Subscription true "Данные подписки"
+// @Success 201 {object} models.Subscription "Успешное создание"
+// @Failure 400 {object} map[string]string "Некорректный запрос"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Router /subscriptions/ [post]
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	var sub models.Subscription
 	if err := c.ShouldBindJSON(&sub); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := models.Validate(&sub); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -59,99 +65,152 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 
 // List godoc
 // @Summary Получить список подписок
+// @Description Возвращает список подписок с пагинацией
 // @Tags subscriptions
 // @Produce json
-// @Success 200 {array} models.Subscription
+// @Param limit query int false "Количество элементов на странице (по умолчанию 10)"
+// @Param offset query int false "Смещение (по умолчанию 0)"
+// @Success 200 {object} map[string]interface{} "data: список подписок, limit, offset"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Router /subscriptions/ [get]
 func (h *SubscriptionHandler) List(c *gin.Context) {
-	subs, err := h.service.List(c.Request.Context())
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	subs, err := h.service.List(c.Request.Context(), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list subscriptions"})
 		return
 	}
-	c.JSON(http.StatusOK, subs)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":   subs,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 // GetByID godoc
 // @Summary Получить подписку по ID
+// @Description Возвращает данные подписки по ID
 // @Tags subscriptions
 // @Produce json
-// @Param id path int true "Subscription ID"
-// @Success 200 {object} models.Subscription
-// @Failure 404 {object} map[string]string
+// @Param id path int true "ID подписки"
+// @Success 200 {object} models.Subscription "Найдена"
+// @Failure 400 {object} map[string]string "Некорректный ID"
+// @Failure 404 {object} map[string]string "Не найдена"
 // @Router /subscriptions/{id} [get]
 func (h *SubscriptionHandler) GetByID(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	sub, err := h.service.GetByID(c.Request.Context(), id)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
+
+	sub, err := h.service.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+		return
+	}
+
 	c.JSON(http.StatusOK, sub)
 }
 
 // Update godoc
 // @Summary Обновить подписку
+// @Description Обновляет данные существующей подписки
 // @Tags subscriptions
 // @Accept json
 // @Produce json
-// @Param id path int true "Subscription ID"
-// @Param subscription body models.Subscription true "Subscription"
-// @Success 200 {object} models.Subscription
+// @Param id path int true "ID подписки"
+// @Param subscription body models.Subscription true "Обновленные данные подписки"
+// @Success 200 {object} models.Subscription "Обновлено"
+// @Failure 400 {object} map[string]string "Некорректные данные"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Router /subscriptions/{id} [put]
 func (h *SubscriptionHandler) Update(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
 	var sub models.Subscription
 	if err := c.ShouldBindJSON(&sub); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 	sub.ID = id
-	if err := h.service.Update(c.Request.Context(), &sub); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+	if err := models.Validate(&sub); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	if err := h.service.Update(c.Request.Context(), &sub); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update subscription"})
+		return
+	}
+
 	c.JSON(http.StatusOK, sub)
 }
 
 // Delete godoc
 // @Summary Удалить подписку
+// @Description Удаляет подписку по ID
 // @Tags subscriptions
-// @Param id path int true "Subscription ID"
-// @Success 204
+// @Param id path int true "ID подписки"
+// @Success 204 "Удалено"
+// @Failure 400 {object} map[string]string "Некорректный ID"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Router /subscriptions/{id} [delete]
 func (h *SubscriptionHandler) Delete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
+
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete subscription"})
+		return
+	}
+
 	c.Status(http.StatusNoContent)
 }
 
 // Summary godoc
 // @Summary Получить сумму подписок за период
+// @Description Возвращает общую сумму подписок за указанный период с учетом фильтров
 // @Tags subscriptions
 // @Accept json
 // @Produce json
-// @Param summary body models.SummaryRequest true "Summary query"
-// @Success 200 {object} map[string]int
+// @Param summary body models.SummaryRequest true "Параметры периода и фильтров"
+// @Success 200 {object} map[string]int "Сумма подписок"
+// @Failure 400 {object} map[string]string "Некорректный запрос"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Router /subscriptions/summary [post]
 func (h *SubscriptionHandler) Summary(c *gin.Context) {
 	var req models.SummaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if err := models.Validate(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	h.log.Debug("got dates",
-		zap.Time("from", req.From.Time),
-		zap.Time("to", req.To.Time),
-	)
-
 	sum, err := h.service.Summary(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to calculate summary"})
 		return
 	}
 
